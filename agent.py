@@ -12,8 +12,8 @@ async def perform_handshake():
     resolver.timeout = 2
     resolver.lifetime = 2
     
-    # Generate random initial counter (0-2^32)
-    initial_counter = random.randint(0, 2**32)
+    # Generate random initial counter (0-2^96-1)
+    initial_counter = random.randint(0, 2**96-1)
     
     # Create special handshake query with counter as first label
     handshake_qname = f"{initial_counter}.hello.{DOMAIN}"
