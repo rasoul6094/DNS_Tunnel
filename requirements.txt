@@ -1,0 +1,5 @@
+dnspython
+dnslib
+cryptography
+crypto
+pycryptodome
