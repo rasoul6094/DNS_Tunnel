@@ -19,8 +19,14 @@ else:
 class GCMEncryptor:
     def __init__(self, key: bytes=None):
         self.key = key if key is not None else KEY
-        self.counter = 0  # Initialize counter
+        self.counter = 0
+        self.initial_counter_set = False
 
+    def set_initial_counter(self, counter: int):
+        """Set the initial counter value"""
+        self.counter = counter
+        self.initial_counter_set = True
+        
     def b32_encode_nopadding(self, data: bytes):
         b32_encoded = base64.b32encode(data) 
         return b32_encoded.decode().rstrip('=')
@@ -42,7 +48,13 @@ class GCMEncryptor:
 class GCMDecryptor:
     def __init__(self, key: bytes=None):
         self.key = key if key is not None else KEY
-        self.counter = 0  # Initialize counter
+        self.counter = 0
+        self.initial_counter_set = False
+
+    def set_initial_counter(self, counter: int):
+        """Set the initial counter value"""
+        self.counter = counter
+        self.initial_counter_set = True
 
     def base32_decode_unpadded(self, data: str) -> bytes:
         # Add padding if needed

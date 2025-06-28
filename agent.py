@@ -1,27 +1,36 @@
 import asyncio
+import random
 from crypto_module import GCMEncryptor
 from utils import encode_base32_dns_query, MAX_PAYLOAD_2DIG, DOMAIN, SERVER_IP, SERVER_PORT, WINDOW_SIZE
 import dns.asyncresolver
 
-# Initialize encryptor and pre-encrypt all data
-encryptor = GCMEncryptor()
-buffer = ""
-with open("plaintext.txt", "r") as f:
-    buffer = f.read()
-
-# Pre-encrypt all chunks and store them
-encrypted_chunks = []
-while buffer:
-    chunk = buffer[:MAX_PAYLOAD_2DIG]
-    buffer = buffer[MAX_PAYLOAD_2DIG:]
-    encrypted_chunks.append(encryptor.encrypt(chunk))
-
-# Track state
-acknowledged = set()
-in_flight = {}
-base_seq = 0
-seq_num = 0
-
+async def perform_handshake():
+    """Perform initial handshake to exchange random counter value"""
+    resolver = dns.asyncresolver.Resolver()
+    resolver.nameservers = [SERVER_IP]
+    resolver.port = SERVER_PORT
+    resolver.timeout = 2
+    resolver.lifetime = 2
+    
+    # Generate random initial counter (0-2^32)
+    initial_counter = random.randint(0, 2**32)
+    
+    # Create special handshake query with counter as first label
+    handshake_qname = f"{initial_counter}.hello.{DOMAIN}"
+    
+    try:
+        # We only care if the query reaches the server, not the response content
+        await resolver.resolve(handshake_qname, 'A')
+        print(f"[+] Handshake successful, initial counter: {initial_counter}")
+        return initial_counter
+    except dns.asyncresolver.NoAnswer:
+        # Server responded but with no answer - this is acceptable for handshake
+        print(f"[+] Handshake successful (empty response), initial counter: {initial_counter}")
+        return initial_counter
+    except Exception as e:
+        print(f"[!] Handshake failed: {e}")
+        return None
+    
 async def send_query(seq: int, qname: str) -> int:
     resolver = dns.asyncresolver.Resolver()
     resolver.nameservers = [SERVER_IP]
@@ -46,6 +55,32 @@ def is_in_window(ack: int, base: int) -> bool:
 
 async def window_loop():
     global base_seq, seq_num
+
+    # Initialize encryptor and perform handshake
+    encryptor = GCMEncryptor()
+    initial_counter = await perform_handshake()
+    if initial_counter is None:
+        print("[!] Failed to establish initial counter, exiting")
+        return
+    
+    encryptor.set_initial_counter(initial_counter)
+    
+    # Pre-encrypt all chunks and store them
+    buffer = ""
+    with open("plaintext.txt", "r") as f:
+        buffer = f.read()
+
+    encrypted_chunks = []
+    while buffer:
+        chunk = buffer[:MAX_PAYLOAD_2DIG]
+        buffer = buffer[MAX_PAYLOAD_2DIG:]
+        encrypted_chunks.append(encryptor.encrypt(chunk))
+
+    # Track state
+    acknowledged = set()
+    in_flight = {}
+    base_seq = 0
+    seq_num = 0
 
     while encrypted_chunks or in_flight:
         tasks = []
