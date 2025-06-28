@@ -8,42 +8,41 @@ from Crypto.Random import get_random_bytes
 # Shared key (256-bit)
 SECRET_KEY = os.environ.get("SHARED_KEY", None)
 
-
 def derive_key_from_passphrase(passphrase: str) -> bytes:
     return hashlib.sha256(passphrase.encode()).digest()  # 32-byte key
-
 
 if SECRET_KEY:
     KEY = derive_key_from_passphrase(SECRET_KEY)
 else:
     KEY = get_random_bytes(32)  # for local testing
 
-
 class GCMEncryptor:
     def __init__(self, key: bytes=None):
-        self.key = key if key is not None else KEY 
+        self.key = key if key is not None else KEY
+        self.counter = 0  # Initialize counter
 
-    def b32_encode_nopadding(self, data : bytes):
+    def b32_encode_nopadding(self, data: bytes):
         b32_encoded = base64.b32encode(data) 
-        b32_nopadding = b32_encoded.decode().rstrip('=')
-        return b32_nopadding
+        return b32_encoded.decode().rstrip('=')
         
     def encrypt(self, data: str) -> str:
-        iv = get_random_bytes(12)  # 96-bit IV
-        cipher = AES.new(self.key, AES.MODE_GCM, nonce=iv)
+        # Use counter as nonce (96-bit)
+        nonce = self.counter.to_bytes(12, 'big')
+        cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
         ciphertext, tag = cipher.encrypt_and_digest(data.encode())
+        self.counter += 1  # Increment counter after each encryption
 
-        # Structure: [2-byte length][IV][ciphertext][tag]
+        # Structure: [2-byte length][ciphertext][tag]
         clen = len(ciphertext)
-        packet = struct.pack(">H", clen) + iv + ciphertext + tag
+        packet = struct.pack(">H", clen) + ciphertext + tag
 
         # Return Base32-encoded version
         return self.b32_encode_nopadding(packet)
 
-
 class GCMDecryptor:
     def __init__(self, key: bytes=None):
         self.key = key if key is not None else KEY
+        self.counter = 0  # Initialize counter
 
     def base32_decode_unpadded(self, data: str) -> bytes:
         # Add padding if needed
@@ -58,16 +57,19 @@ class GCMDecryptor:
         except Exception as e:
             raise ValueError("Invalid Base32 input") from e
 
-        if len(data) < 2 + 12 + 16:
+        if len(data) < 2 + 16:  # Removed IV size check
             raise ValueError("Input too short to be valid")
 
         clen = struct.unpack(">H", data[:2])[0]
-        iv = data[2:14]
-        ciphertext = data[14:14+clen]
-        tag = data[14+clen:14+clen+16]
+        ciphertext = data[2:2+clen]
+        tag = data[2+clen:2+clen+16]
 
-        cipher = AES.new(self.key, AES.MODE_GCM, nonce=iv)
+        # Use counter as nonce (96-bit)
+        nonce = self.counter.to_bytes(12, 'big')
+        cipher = AES.new(self.key, AES.MODE_GCM, nonce=nonce)
         try:
-            return cipher.decrypt_and_verify(ciphertext, tag).decode()
+            plaintext = cipher.decrypt_and_verify(ciphertext, tag)
+            self.counter += 1  # Only increment counter if decryption succeeds
+            return plaintext.decode()
         except ValueError:
             raise ValueError("Decryption failed: authentication tag mismatch")
