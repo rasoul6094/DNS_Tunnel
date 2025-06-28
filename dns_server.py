@@ -13,25 +13,38 @@ class TunnelResolver(BaseResolver):
         self.received = {}     # seq -> base32 str
         self.lock = Lock()
         self.decryptor = GCMDecryptor()
+        self.handshake_complete = False
 
     def resolve(self, request, handler):
         qname = str(request.q.qname).strip('.')
         parts = qname.split('.')
+        reply = request.reply()
 
-        if len(parts) < 4:
-            print("[!] Malformed query:", qname)
-            return request.reply()
+        # Check for handshake message (format: "counter.hello.domain")
+        if len(parts) >= 3 and parts[1] == "hello":
+            try:
+                initial_counter = int(parts[0])
+                self.decryptor.set_initial_counter(initial_counter)
+                self.handshake_complete = True
+                print(f"[*] Handshake complete. Initial counter: {initial_counter}")
+                # Send ACK with special IP pattern 1.1.1.1
+                reply.add_answer(RR(qname, QTYPE.A, rdata=A("1.1.1.1"), ttl=0))
+                return reply
+            except ValueError:
+                pass
 
-        # Extract and validate sequence number
+        # Normal packet processing
+        if not self.handshake_complete:
+            print("[!] Received data before handshake completed")
+            return reply
+
         try:
             seq = int(parts[0])
         except ValueError:
             print("[!] Invalid sequence number in query:", parts[0])
-            return request.reply()
+            return reply
 
-        # Extract base32 payload from labels
         base32_data = ''.join(parts[1:-DOMAIN_LABELS_COUNT])
-        reply = request.reply()
 
         with self.lock:
             if not self.in_window(seq):
@@ -39,14 +52,11 @@ class TunnelResolver(BaseResolver):
                 reply.add_answer(RR(qname, QTYPE.A, rdata=A(self.build_ack_ip(self.expected_seq)), ttl=0))
                 return reply
 
-            # Store only if not already received
             if seq not in self.received:
                 self.received[seq] = base32_data
 
-            # Always ACK if in window
             ip = self.build_ack_ip((seq+1)%100)
 
-            # Try to process in-order messages starting from expected_seq
             while self.expected_seq in self.received:
                 b32 = self.received.pop(self.expected_seq)
                 try:
@@ -56,7 +66,7 @@ class TunnelResolver(BaseResolver):
                         f.write(decrypted)
                 except Exception as e:
                     print(f"[SEQ {self.expected_seq:02d}] Decryption failed: {e}")
-                    break  # Stop if decryption fails (counter out of sync)
+                    break
                 else:
                     self.expected_seq = (self.expected_seq + 1) % 100
                     reply.add_answer(RR(qname, QTYPE.A, rdata=A(ip), ttl=0))
