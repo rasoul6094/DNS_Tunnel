@@ -197,7 +197,52 @@ flowchart TD
 
 ### ⚙️ Handshake Protocol
 
-*TODO: describe the handshake that sets encryption keys, initial IV, and roles.*
+The system establishes secure communication through a simple but effective handshake process:
+
+1. **Initial Counter Exchange**:
+   - Client generates a random 32-bit initial counter value
+   - Sends it in plaintext via special DNS query: `{random_counter}.hello.tunnel.domain.com`
+   - Server extracts the counter and initializes its decryptor with this value
+
+2. **Synchronization**:
+   - Server responds with dummy ACK (1.1.1.1) to confirm receipt
+   - Both sides now use counter-based IVs starting from this initial value
+
+3. **Security Properties**:
+   - Each session gets unique starting point (random counter)
+   - Actual data encryption begins only after handshake
+   - Simple but effective against replay attacks
+
+4. **Failure Handling**:
+   - Client aborts if handshake fails
+   - Server rejects data packets before handshake completes
+
+```mermaid
+flowchart TD
+    subgraph Client[Agent]
+        A[Generate random counter] --> B[Create handshake query]
+        B -->|"DNS query: {counter}.hello.{DOMAIN}"| C[Server]
+    end
+
+    subgraph Server
+        C --> D{Parse query}
+        D -->|"parts[1] == 'hello'?"| E[Extract counter]
+        E --> F[Set decryptor.counter]
+        F --> G[handshake_complete = true]
+        G --> H[Send empty response]
+    end
+
+    subgraph Client[Post-Handshake]
+        H --> I[Set encryptor.counter]
+        I --> J[Start encrypted transmission]
+    end
+
+    style Client fill:#e6f3ff,stroke:#333
+    style Server fill:#ffe6e6,stroke:#333
+    style Post-Handshake fill:#e6ffe6,stroke:#333
+
+```
+
 
 ---
 
@@ -208,4 +253,9 @@ flowchart TD
 * [ ] Support for bidirectional streams
 * [ ] Pluggable compression
 * [ ] Better support for I/O  
+
+
+
+
+
 
