@@ -19,11 +19,11 @@ def max_base32_payload_len(domain_suffix="tunnel.domain.com", id_len=2):
     return num_labels * MAX_LABEL_LEN + extra
 
 
-def max_plaintext_len(domain_suffix="tunnel.domain.com", id_len=2 , overhead=30):
+def max_plaintext_len(domain_suffix="tunnel.domain.com", id_len=2 , overhead=18):
     base32_len = max_base32_payload_len(domain_suffix, id_len)
     # total allowed encrypted packet size
     total_packet_bytes = (base32_len * 5) // 8
-    max_plaintext = total_packet_bytes - 30  # subtract encryption overhead
+    max_plaintext = total_packet_bytes - overhead  # subtract encryption overhead
     return max_plaintext
 
 
