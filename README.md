@@ -200,7 +200,7 @@ flowchart TD
 The system establishes secure communication through a simple but effective handshake process:
 
 1. **Initial Counter Exchange**:
-   - Client generates a random 32-bit initial counter value
+   - Client generates a random 96-bit initial counter value
    - Sends it in plaintext via special DNS query: `{random_counter}.hello.tunnel.domain.com`
    - Server extracts the counter and initializes its decryptor with this value
 
@@ -219,7 +219,7 @@ The system establishes secure communication through a simple but effective hands
 
 ```mermaid
 flowchart TD
-    subgraph Client[Agent]
+    subgraph Agent[Client]
         A[Generate random counter] --> B[Create handshake query]
         B -->|"DNS query: {counter}.hello.{DOMAIN}"| C[Server]
     end
@@ -232,12 +232,12 @@ flowchart TD
         G --> H[Send empty response]
     end
 
-    subgraph Client[Post-Handshake]
+    subgraph Post-Handshake[Client]
         H --> I[Set encryptor.counter]
         I --> J[Start encrypted transmission]
     end
 
-    style Client fill:#e6f3ff,stroke:#333
+    style Agent fill:#e6f3ff,stroke:#333
     style Server fill:#ffe6e6,stroke:#333
     style Post-Handshake fill:#e6ffe6,stroke:#333
 
